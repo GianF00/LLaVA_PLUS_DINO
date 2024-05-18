@@ -1,7 +1,6 @@
 from matplotlib import pyplot as plt
 import cv2
 import numpy as np
-import sklearn.metrics
 import re
 from math import ceil
 
