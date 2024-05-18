@@ -46,6 +46,8 @@ reference = "The image shows a kitchen scen where there is a dish rack. Inside t
 #         "temperature": 0.1
 #     }
 # )
+
+###================ LLaVA ====================#####
 input_data1={
     "image": input_image,
     "top_p": 1,
@@ -60,13 +62,14 @@ output = replicate.run(
     input=input_data1
 )
 
-
 res = "".join(output)
 print(res)
 
 # User or model-generated answer
 candidate = res
 print("\nCandidate: ", candidate)
+
+####=================== END of LLAVA =========================####
 
 ############================== Extraction of the objects from the picture =============================##########################
  #candidate
