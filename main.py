@@ -1,124 +1,126 @@
-import replicate
-import time 
-import numpy
-import supervision as sv
+from matplotlib import pyplot as plt
+import openai
+import time
+from openai import OpenAI
+import os 
+import json
+import base64
+import requests
 import cv2 
-import numpy as np
 import psutil
 import nltk
-import json
-import re
 from nltk.tokenize import word_tokenize
-from sklearn.metrics import precision_score, recall_score
+import replicate
 #nltk.download('punkt')  # Ensure the tokenizer is downloaded
 from nltk.translate.meteor_score import meteor_score
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from tabulate import tabulate
-from functions import calculate_iou, drawing_boxes,calculate_predi_time
-import matplotlib.pyplot as plt
-#Länk: https://replicate.com/yorickvp/llava-13b/api/learn-more 
-# LÄnk till API https://github.com/oobabooga/text-generation-webui/commit/38ab214a416b2dbb6bcba4d318bfc847fbb4da36
-#start = time.time()
-#https://scikit-learn.org/stable/auto_examples/model_selection/plot_precision_recall.html 
-#https://guides.himmelfarb.gwu.edu/studydesign101/helpful-formulas
-#image = "bord10.jpg"
-#image = "ordning3.jpg"
-client = replicate.Client()
+from functions import drawing_boxes, calculate_predi_time, calculate_iou
 
-image = "ordning3.jpg"
-#image = "bord3.jpg"
-start = time.time()
-input_image = open(f"{image}", "rb")
-f = open('LLaVA_data.txt', 'a')
-#query = "Calculate the coordinates in this format x0,y0,x1,y1 of the pot lid, the blue bowl, the scissors, the dish rack, the shelf above the sink, the spatula and of the cheese slicer."
-# ordning3
-query = "give me the bounding boxes of the white plate, the white bowl, the glass, the fork, the spoon, the knife, the dish rack, the shelf above the dish rack, the white coffe mugg in the shelf and the blue coffe mugg in the shelf"
+# OpenAI API Key
+api_key = "Skriv din API nyckel"
 
-f.write("Query: " + query + "\n")
+# Function to encode the image
+def encode_image(image_path):
+  with open(image_path, "rb") as image_file:
+    return base64.b64encode(image_file.read()).decode('utf-8')
+
+# Path to your image
+image_path = "ordning3.jpg"
+#image_path = "ordning4_ny.jpg"
+#image_path = "ordning5.jpg"
+start_gpt = time.time()
+input_image = open(f"{image_path}", "rb")
 
 
-# Reference text:
-reference = "The image shows a kitchen scen where there is a dish drainer. Inside the dish drainer there are a white plate, a glass, a white bowl, two forks a spoon and a knife.\
-                \nOn top of the dish drainer there is a white shelf with a white coffe mug and a blue coffe mug. The wall of the kitchen is made of white majolica."  # Correct answer
+####=========================  Query ==========================###
+# Ordning3 - image2 som namn i filen
+query = "describe the utensils, glass, the white plate and white bowl in the dish rack, the dish rack, the shelf above the dish rack and the cups inside of the white shelf"
 
-# input_data={
-#     "image" : input_image,
-#     "top_p": 1,
-#     "prompt": query,
-#     "max_tokens": 1024,
-#     "temperature": 0.1
-# }
-# output = replicate.run(
-#     "yorickvp/llava-13b:a0fdc44e4f2e1f20f2bb4e27846899953ac8e66c5886c5878fa1d6b73ce009e5",
-#     input=input_data
-# )
+########======================= Reference text: ================#####
+#imagen ordning 3
+reference = "The image shows a kitchen scen where there is a dish rack. Inside the dish rack there is a white plate, a glass, a white bowl, two forks, a spoon and a knife.\
+                \nOn top of the dish rack there is a white shelf with cups. The wall of the kitchen is made of white majolica."  # Correct answer
 
-input_data={
-    "image": input_image,
-    "top_p": 1,
-    "prompt": query,
-    "history": [],
-    "max_tokens": 1024,
-    "temperature": 0.1
+
+
+# Getting the base64 string
+base64_image = encode_image(image_path)
+
+headers = {
+  "Content-Type": "application/json",
+  "Authorization": f"Bearer {api_key}"
 }
-output = replicate.run(
-    "yorickvp/llava-v1.6-vicuna-13b:0603dec596080fa084e26f0ae6d605fc5788ed2b1a0358cd25010619487eae63",
-    input=input_data
-)
-res = "".join(output)
-print(res)
-# User or model-generated answer
-candidate = res
-print("\nCandidate: ", candidate)
-end = time.time()
+payload = {
+  "model": "gpt-4-turbo",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": query
+        },
+        {
+          "type": "image_url",
+          "image_url": {
+            "url": f"data:image/jpeg;base64,{base64_image}"
+          }
+        }
+      ]
+    }
+  ],
+  "max_tokens": 300
+}
 
-############================== Extraction of the objects=============================##########################
+f = open('GPT4_data.txt', 'a')
+# initialize the CPU usage 
 
-description1 = candidate
+
+response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+print(response.json())
+end_gpt = time.time()
+time_exec_gpt = end_gpt - start_gpt
+
+temp_json = response.json()
+#in candidate stores the text generated by the model
+candidate = temp_json['choices'][0]['message']['content']
+print("\nOutput message: ",candidate)
+
+####========================Extractiong of the objects============###
+
 with open('items.json', 'r') as file:
     data = json.load(file)
     item_list = data['items']
 
 # Normalize the description to lower case to ensure case-insensitive matching
-description_lower = description1.lower()
+description_lower = candidate.lower()
 
 # Find which items from the JSON list are mentioned in the description
 found_items = [item for item in item_list if item in description_lower]
 
 # Clean items to ensure proper formatting for API query
 found_items_cleaned = [item.strip() for item in found_items]  # Remove extra spaces
-found_items_query = ','.join(found_items_cleaned)
+found_items_query = ",".join(found_items_cleaned)
+print("Found items: ", found_items_query)
+#####======================ENd extraction of the objects=============###
 
-print("\nFound Items:", str(found_items_query))
-## Number 
-print("Number of Items Found:", len(found_items), "\n")
-print("Total Number of Items:", len(item_list), "\n")
-print("Found {} out of {} items.".format(len(found_items), len(item_list)), "\n")
-####################============END OF Extraction of the objects==========================####################
-
-
-###===============Getting the bounding boxes from the text================##########
-pattern = re.compile(r'\[\s*(\d+\.\d+),\s*(\d+\.\d+),\s*(\d+\.\d+),\s*(\d+\.\d+)\s*\]')
-
-# Find all matches in the text
-matches = pattern.findall(candidate)
-
-# Convert the matches to a list of tuples with float numbers
-pred_coordinates = [list(map(float, match)) for match in matches]
-
-# Print the extracted coordinates
-for coord in pred_coordinates:    
-    print(coord)
-###===============End of getting the bounding boxes================##########
 
 
 ###########============= DRAWING THE GROUND TRUHT BOUNDING BOXES ================############
-img = cv2.imread(image)
+img = cv2.imread(image_path)
+# if "cup" in found_items or "mugg" in found_items:
+#     numOfTimes = len(found_items)+1
+#     print(numOfTimes,"\n")
+# else:
+#     numOfTimes = len(found_items) 
+       
 numOfTimes = 10
-labels = "objects"
+print("\nN of times to draw", numOfTimes)
+Labels = "objects"
 coordinates = []
 for _ in range(numOfTimes):
-    x_val, y_val, w_val, h_val = drawing_boxes(labels,img)
+    x_val, y_val, w_val, h_val = drawing_boxes(Labels,img)
     coordinates.append([x_val,y_val, (x_val + w_val), (y_val+h_val)])
     #print("Num of iter: ", x)
 
@@ -143,9 +145,7 @@ print("\nCoordinates: ", coordinates)
 for coord in coordinates:
     temp = cv2.rectangle(img, (coord[0], coord[1]), (coord[2], coord[3]), (0, 255, 0), 2)
 
-cv2.imshow("Ground truth bounding boxes", temp)
-cv2.imwrite('gt_image_ordning3.jpg',temp)      
-cv2.waitKey(0)
+
 #print(f"{x= }	{y= }	{w= }	{h= }")
 #cv2.waitKey(0)
 
@@ -153,83 +153,140 @@ cv2.waitKey(0)
 # img_with_gruthrubbox = cv2.rectangle(img, (x,y),(x + w,y + h), (0,255,0),2)
 # cv2.imshow("with the box", img_with_gruthrubbox)
 # cv2.waitKey(0)
-cv2.destroyAllWindows()
 
-####============== END OF THE DRAWING THE GROUND TRUHT BOUNDING BOXES 
+####============== END OF THE DRAWING THE GROUND TRUHT BOUNDING BOXES =========####
 
-###============drawing the predicted bboxes ================#####
 
-img = cv2.imread('gt_image_ordning3.jpg')
-image_height, image_width = img.shape[0], img.shape[1]
+#####=============DINO================#####
+input_data1={
+    "image": input_image,
+    "query": found_items_query,
+    "box_threshold": 0.38,
+    "text_threshold": 0.25,
+    "show_visualisation": True,   
+}
+#20,37,
 
-pr = []
-for el in pred_coordinates:    
-    x_min_scaled = int(el[0] * image_width)
-    y_min_scaled = int(el[1] * image_height)
-    x_max_scaled = int(el[2] * image_width)
-    y_max_scaled = int(el[3] * image_height)
+# start_dino = time.time()
+output = replicate.run(
+    "adirik/grounding-dino:efd10a8ddc57ea28773327e881ce95e20cc1d734c589f7dd01d2036921ed78aa",    
+    input=input_data1
+)
 
-    # Justera koordinater för att undvika att gå utanför bildens gränser
-    x_min_scaled = max(0, min(x_min_scaled, image_width - 1))
-    y_min_scaled = max(0, min(y_min_scaled, image_height - 1))
-    x_max_scaled = max(0, min(x_max_scaled, image_width - 1))
-    y_max_scaled = max(0, min(y_max_scaled, image_height - 1))
 
+#resultatet blir en JSON format med en länk som visar input bilden med resultatet
+print("\n",output)
+###===============END OF DINO============####
+
+
+
+###=========== EXTRACTING THE PREDICTED BBOXES OF DINO TO CALCULATE THE IOU ============#
+predicted_bboxes = []
+# List to hold detailed info including bounding boxes, confidence, and class for 'dog' or 'cat' detections
+bounding_boxes = []
+confid = []
+labels =[]
+for el in output['detections']:
+    # label = el['label']
+    # if label == 'dog' or label == 'cat':
+    #     bbox = el['bbox']
+    #     conf = el['confidence']
+        
+    #     # Add just the bbox to the predicted_bboxes list
+    #     predicted_bboxes.extend(bbox)
+    #     confid.append(conf)
+    #     # Add detailed info to the bounding_boxes list
+    #     bounding_boxes.append({
+    #         'class': label,
+    #         'confidence': conf,
+    #         'bbox': bbox
+    #     })
     
-    pr.append([x_min_scaled, y_min_scaled, x_max_scaled, y_max_scaled])
+    bbox = el['bbox']
+    conf = el['confidence']
+    label = el['label']
+    # Add just the bbox to the predicted_bboxes list
+    predicted_bboxes.extend(bbox)
+    confid.append(conf)
+    labels.append(label)
+    # Add detailed info to the bounding_boxes list
+    bounding_boxes.append({
+        'class': label,
+        'confidence': conf,
+        'bbox': bbox
+    })
 
-    # Rita den förutsagda bounding boxen
-    cv2.rectangle(img, (x_min_scaled, y_min_scaled), (x_max_scaled, y_max_scaled), (0, 0, 255), 2)
 
-cv2.imshow('Image with Bounding Boxes', img)
-cv2.imwrite("LLaVA_ordning3_ny6_1.jpg",img)
+print("result bounding_boxes: ", bounding_boxes)
+print("\nresult predicted_bbox: ", predicted_bboxes)
+print("\nresult confid: ", confid)
+print("\nlabels: ", labels)
+
+for bbox in bounding_boxes:
+    class_label = bbox['class']
+    confidence = bbox['confidence']
+    bbox = bbox['bbox']
+
+    cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2)
+    cv2.putText(img, f'{class_label}: {confidence:.2f}', (bbox[0], bbox[1] - 10),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
+cv2.imshow("Ground truth bounding boxes", temp)
+cv2.imwrite('DINO_ordning3_37_3.jpg',temp)      
+
 cv2.waitKey(0)
 cv2.destroyAllWindows()
+###=========== END OF EXTRACTING PREDICTED BBOXES OF DINO TO CALCULATE THE IOU ============#
 
-####======== end of dwaing the predicted bboxes =============####
 
-####======== CALCULATING THE PRECISION, RECALL, TP, FP, FN=============####
-pr_boxes = pr
+###============= CALCULATING THE PRECISION, RECALL, TP, FP, FN =====####
+pr_boxes = [predicted_bboxes[i:i+4] for i in range(0, len(predicted_bboxes), 4)]
 print("Predicted bboxes",pr_boxes, "\n")
-
-## Calculating the Precision and Recall using different iou threshold: 20, 50, 60%
-iou_threshold = 0.2
+## Välj en threshold mellan 20, 50 eller 60%
+iou_threshold = 0.60
 true_positives = 0
 false_positives = 0
-gt_matched = set()
+false_negatives = 0
 
-# Calculate TP and FP
-for i, pred_box in enumerate(pr_boxes):
+matches = []
+gt_matched = set()
+# Calculate matches and IoU
+for p_idx, p_box in enumerate(pr_boxes):
     match_found = False
-    for j, gt_box in enumerate(coordinates):
-        iou = calculate_iou(pred_box, gt_box)
+    for gt_idx, gt_box in enumerate(coordinates):
+        iou = calculate_iou(p_box, gt_box)
         if iou >= iou_threshold:
-            if j not in gt_matched:
+            if gt_idx not in gt_matched:
                 true_positives += 1
-                gt_matched.add(j)
+                gt_matched.add(gt_idx)
                 match_found = True
+
+                # Draw bounding box on the image if IoU is greater than 0.80
+                cv2.rectangle(img, (p_box[0], p_box[1]), (p_box[2], p_box[3]), (255, 0, 0), 2)
+                cv2.putText(img, f'{labels[p_idx]}: {confid[p_idx]:.2f}', (p_box[0], p_box[1] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
                 break
+
     if not match_found:
         false_positives += 1
 
-# Calculate FN
+
 false_negatives = len(coordinates) - len(gt_matched)
 
-# Calculate Precision and Recall
-precision = true_positives / (true_positives + false_positives) 
-recall = true_positives / (true_positives + false_negatives)
-
-print(f"True Positives (TP): {true_positives}")
-print(f"False Positives (FP): {false_positives}")
-print(f"False Negatives (FN): {false_negatives}")
-print(f"Precision: {precision:.3f}")
-print(f"Recall: {recall:.3f}")
+precision = true_positives / (true_positives + false_positives) if true_positives + false_positives > 0 else 0
+recall = true_positives / (true_positives + false_negatives) if true_positives + false_negatives > 0 else 0
 cv2.imshow("Ground truth bounding boxes", temp)
-cv2.imwrite('LLaVA1.jpg',temp)      
+cv2.imwrite('DINO3_37_3.jpg',temp)      
 cv2.waitKey(0)
 cv2.destroyAllWindows()
-print(f"Matched ground truth: {gt_matched}")
-####======== END CALCULATING THE PRECISION, RECALL, TP, FP, FN=============####
+print("True Positives:", true_positives)
+print("False Positives:", false_positives)
+print("False Negatives:", false_negatives)
+print("Precision:", precision)
+print("Recall:", recall)
+print("Matched pairs and IoU scores:", gt_matched)
+
+###============= END CALCULATING THE PRECISION, RECALL, TP, FP, FN =====####
 
 ####========= DRAWING THE DIAGRAM ===========####
 metrics = ['True Positives', 'False Positives', 'False Negatives', 'Precision', 'Recall']
@@ -240,7 +297,7 @@ plt.figure(figsize=(10, 6))
 plt.bar(metrics, values, color=['green', 'red', 'blue', 'purple', 'orange'])
 
 # Adding the title and labels
-plt.title('Object Detection Metrics ')
+plt.title('Object Detection Metrics')
 plt.xlabel('Metrics')
 plt.ylabel('Values / Scores')
 for i, v in enumerate(values):
@@ -249,81 +306,56 @@ for i, v in enumerate(values):
 # Show the plot
 plt.tight_layout()
 plt.show()
-####========= DRAWING THE DIAGRAM ===========####
+####========= END OF DRAWING THE DIAGRAM ===========####
 
 
-#####=============DINO================#####
-# output = replicate.run(
-#     "adirik/grounding-dino:efd10a8ddc57ea28773327e881ce95e20cc1d734c589f7dd01d2036921ed78aa",    
-#     input={
-#         "image": input_image,
-#         "query": found_items_query,
-#         "box_threshold": 0.35,
-#         "text_threshold": 0.25,
-#         "show_visualisation": True,   
-#     }
-# )
-#resultatet blir en JSON format med en länk som visar input bilden med resultatet
-#print(output)
-###===============END OF DINO============####
+###============= CALCULATING THE AMOUNT OF THE TOKEN COST =====####
+# image_height, image_width = img.shape[0], img.shape[1]
+# print(calculate_image_tokens(image_width,image_height) , "Tokens")
+# tokens_img = calculate_image_tokens(image_width,image_height)
+###============= END OF CALCULATING THE AMOUNT OF THE TOKEN COST =====####
 
-####====== CALCULATING THE COST OF THE GPU with REPLICATE TIME =====#####
-Total_cost,Predic_time = calculate_predi_time("0603dec596080fa084e26f0ae6d605fc5788ed2b1a0358cd25010619487eae63",input_data,0.000725)
+####============== CALCULATING THE PREDICTION TIME  =========####
+Total_cost, Predic_time = calculate_predi_time("efd10a8ddc57ea28773327e881ce95e20cc1d734c589f7dd01d2036921ed78aa",input_data1,0.000225) 
+####============== END OF CALCULATING THE PREDICTION TIME  =========####
 
-###======= END OF CALCULATING THE COST OF THE GPU with REPLICATE TIME =======### 
+# print("time of execution: ", time_exec_gpt, "\n" )
+# print("time of execution: ", time_exec_dino, "\n" )
 
-####=========== OLIKA MÄTNINGAR ==========#####
-time_exec = end - start
-print("time of execution: ", time_exec )
-
-# Tokenize the reference and candidate
-tokenized_reference = word_tokenize(reference)
-tokenized_candidate = word_tokenize(candidate)
-
-# Calculate METEOR score
-score = meteor_score([tokenized_reference], tokenized_candidate)
-print(f"METEOR Score: {score:.3f}")
-
-chencherry = SmoothingFunction()
-
-# Now, let's calculate the BLEU score with smoothing
-bleu_score = sentence_bleu([reference], candidate, 
-                           smoothing_function=chencherry.method4)  # reference tokens must be a list of lists
-
-print(f"BLEU Score: {bleu_score}\n")
-
-f.write(f"image: {image}, below are the measures for this image using the model LLaVA")
+#print(f"BLEU Score: {bleu_score}\n")
+f.write(f"\nimage: {image_path}, below are the measures for this image using the model LLaVA\n")
+f.write("\nQuery: " + query + "\n")
 f.write("\nReference text provided by the user:\n" + reference +"\n")
-f.write("\n")
 f.write("Candidate text provided by the modell:\n" + candidate + "\n")
-f.write("Execution time: " + repr(time_exec)+ "\n")
-# f.write("METEOR Score: "+ repr(score)+ "\n")
-# f.write("BLEU score: "+repr(bleu_score))
-
+# f.write("Execution time gpt4: " + repr(time_exec_gpt)+ "second\n")
+# f.write("Execution time dino: " + repr(time_exec_dino)+ "second\n")
+# f.write("METEOR Score: "+ repr(score1)+ "\n")
+#f.write("BLEU score: "+repr(bleu_score))
+#f.write("IOU: " + repr(iou_results))
+f.write("Dino predicted coordinates of objects: " + repr(predicted_bboxes))
 
 mydata = [
-    ["Execution time local", f"{time_exec} seconds"], 
-    # # ["METEOR Score", f"{score}"],
+    ["Execution time of GPT4", f"{time_exec_gpt} second"], 
+    # ["METEOR Score", f"{score1}"],
     # ["BLEU score", f"{bleu_score}"],
-    ["Predicted coordinates from LLaVA", f"{coordinates}"],
-    #["IOU", f"{iou_results}"],
-    ["Num of found items", f"{len(coordinates)}, {found_items}"],
+    #["IOU", f"{iou_results}\n"],
+    ["Num of found items", f"{len(labels)}, {labels}"],
+    ["Predict time usage of Nvidia T4 GPU hardware (DINO)", f"{Predic_time} seconds"],
+    ["Cost of the usage Nvidia T4 GPU hardware (DINO)", f"{Predic_time} * 0.000225/s = {Total_cost} dollar"],
+    ["Precision", f"{precision}"],
+    ["Recall", f"{recall}"],
+    # ["Cost of token image", f"{tokens_img}"],
+    ["DINO predicted coordinates of objects: ", f"{coordinates}"],
     ["Precision", f"{precision}"],
     ["Recall", f"{recall}"],
     ["True positive", f"{true_positives}"],
     ["False positive", f"{false_positives}"],
     ["False negative", f"{false_negatives}"],
     ["Matched ground truth:", f"{gt_matched}"],
-    ["Predict time usage of the Nvidia A40 (Large) GPU hardware (LLaVA)", f"{Predic_time} seconds"],
-    ["Cost of the usage Nvidia A40 (Large) GPU hardware (LLaVA)", f"{Predic_time} * 0.000725/s = {Total_cost} dollar"],
-    ["iou threshold: ", f"{iou_threshold}"]
-
+    ["IoU threshold:", f"{iou_threshold}"],
 ]
  
 # create header
-head = [f"{image}","LLaVA"]
+head = [f"{image_path}","GPT4 och Grounding DINO"]
 print(tabulate(mydata, headers=head, tablefmt="grid"))
 f.write(tabulate(mydata, headers=head, tablefmt="grid"))
-f.close()
-
-
