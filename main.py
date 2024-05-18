@@ -216,30 +216,6 @@ cv2.destroyAllWindows()
 ####======== CALCULATING THE PRECISION, RECALL, TP, FP, FN=============####
 pr_boxes = pr
 print("Predicted bboxes",pr_boxes, "\n")
-# true_positives = 0
-# false_positives = 0
-# iou_threshold = 0.60
-
-# gt_matched = set()
-# #Calculate True Positives and False Positives
-# # Calculate True Positives and False Positives
-# for p_idx, p_box in enumerate(pr_boxes):
-#     match_found = False
-#     for gt_idx, gt_box in enumerate(coordinates):
-#         iou = calculate_iou(p_box, gt_box)
-#         if iou >= iou_threshold and gt_idx not in gt_matched:
-#             true_positives += 1
-#             gt_matched.add(gt_idx)
-#             match_found = True
-#             break
-#     if not match_found:
-#         false_positives += 1
-
-
-# # Calculate False Negatives
-# false_negatives = len(coordinates) - len(gt_matched)
-# precision = true_positives / (true_positives + false_positives)
-# recall = true_positives / (true_positives + false_negatives)
 
 ## Calculating the Precision and Recall using different iou threshold: 20, 50, 60%
 iou_threshold = 0.2
