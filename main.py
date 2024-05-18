@@ -33,38 +33,13 @@ f = open('LLaVA_data.txt', 'a')
 #query = "Calculate the coordinates in this format x0,y0,x1,y1 of the pot lid, the blue bowl, the scissors, the dish rack, the shelf above the sink, the spatula and of the cheese slicer."
 # ordning3
 query = "give me the bounding boxes of the white plate, the white bowl, the glass, the fork, the spoon, the knife, the dish rack, the shelf above the dish rack, the white coffe mugg in the shelf and the blue coffe mugg in the shelf"
-# ordning4_ny
-#query = "give me the bounding boxes of the pot lid, the blue bowl, the scissors, the dish rack, the shelf above the sink, the spatula and of the cheese slicer."
-#ordning5
-#query = "give me the bounding boxes of the blue bowl, the scissors, the dish rack, the shelf above the sink, the spoon, the fork, spaghetti scoop, the grater"
-#ordning6
-#query = "give me the bounding boxes of the knife, the dish rack, the shelf above the dish rack, the white plate, the little white plate, the white mug, the fork and the spoon."
-#ordning7
-#query = "give me the bounding boxes of the spoon, the yellow paper, the pen, the pencil, the eraser and the glasses"
-#bord3
-#query = "give me the bounding boxes of the knife, the scissors, the dish rack, the blue bowl, the gray bowl, the spoon, the white cup in the shelf, the shelf and the fork"
+
 f.write("Query: " + query + "\n")
 
 
 # Reference text:
 reference = "The image shows a kitchen scen where there is a dish drainer. Inside the dish drainer there are a white plate, a glass, a white bowl, two forks a spoon and a knife.\
                 \nOn top of the dish drainer there is a white shelf with a white coffe mug and a blue coffe mug. The wall of the kitchen is made of white majolica."  # Correct answer
-
-#imagen ordning4
-#reference = "In the dish drainer we have a blue bowl, a silver pot lid, white scissors, a spatula and a cheese slicer"
-
-#imagen ordning5
-#reference = "in the dish drainer we have a blue bowl, a fork, a spoon, a spaghetti scoop, a grater and scissors. Above of the dish drainer there is an empty shelf."
-
-#imagen ordning6
-#reference = "In the dish rack we have a fork, a spoon, a knife, a white mug, a little white plate, a white plate"
-
-#imagen bord1
-#reference = "In the white table we have a spoon, the yellow paper, the pen, the pencil, the eraser and the glasses"
-#imagen bord1
-#reference = "In the white table we have a spoon, the yellow paper, the pen, the pencil, the eraser and the glasses"
-#image bord3
-#reference = "in the dish rack we have a spoon, a fork, a knife, two bowls, a cup, and a pair of scissors. Above of the dish rack there is a shelf with inside a white cup."
 
 # input_data={
 #     "image" : input_image,
