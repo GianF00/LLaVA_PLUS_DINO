@@ -1,8 +1,62 @@
+from math import ceil
 from matplotlib import pyplot as plt
 import cv2
 import numpy as np
-import re
-from math import ceil
+import sklearn.metrics
+import time
+import replicate
+
+
+
+def compute_precision_recall(yTrue, predScores, thresholds):
+    precisions = []
+    recalls = []
+    # loop over each threshold from 0.6 to 0.9
+    for threshold in thresholds:
+        # yPred is dog if prediction score greater than threshold
+        # else cat if prediction score less than threshold
+        yPred = [
+            #"cat" if score >= threshold else "dog"
+            "dog" if score >= threshold else "cat"
+            for score in predScores
+        ]
+  
+        # compute precision and recall for each threshold
+        precision = sklearn.metrics.precision_score(y_true=yTrue,
+            y_pred=yPred, pos_label="dog")
+        recall = sklearn.metrics.recall_score(y_true=yTrue,
+            y_pred=yPred, pos_label="dog")
+  
+        # append precision and recall for each threshold to
+        # precisions and recalls list
+        precisions.append(np.round(precision, 3))
+        recalls.append(np.round(recall, 3))
+    # return them to calling function
+    return precisions, recalls
+
+
+def pr_compute(groutrut_values, predic_values):
+    # define thresholds from 0.2 to 0.50 with step size of 0.05
+    thresholds = np.arange(start=0.6, stop=0.9, step=0.05)
+    # call the compute_precision_recall function
+    precisions, recalls = compute_precision_recall(
+        yTrue=groutrut_values, predScores=predic_values,
+        thresholds=thresholds,
+    )
+ 
+    # return the precisions and recalls
+    return (precisions, recalls,thresholds)
+
+
+def plot_pr_curve(precisions, recalls):
+    # plots the precision recall values for each threshold
+    # and save the graph to disk
+    plt.plot(recalls, precisions, linewidth=4, color="red")
+    plt.xlabel("Recall", fontsize=12, fontweight='bold')
+    plt.ylabel("Precision", fontsize=12, fontweight='bold')
+    plt.title("Precision-Recall Curve", fontsize=15, fontweight="bold")
+    #plt.savefig(path)
+    plt.show()
 
 
 def drawing_boxes(LABELS, IMG):
@@ -10,32 +64,55 @@ def drawing_boxes(LABELS, IMG):
     return (x,y,w,h)
 
 
-def extract_coordinates_gpt4(response_text):
-    # This pattern matches coordinates for both listed and inline formats
-    # pattern = r'- x0: (\d+)\s+- y0: (\d+)\s+- x1: (\d+)\s+- y1: (\d+)|Coordinates: \((\d+), (\d+), (\d+), (\d+)\)'
-    # matches = re.findall(pattern, response_text)
-    
-    # # Extracting the coordinates and converting them to integers
-    # coordinates = []
-    # for match in matches:
-    #     coords = match if match[0] != '' else match[4:]
-    #     coordinates.append(tuple(map(int, coords)))
+def calculate_predi_time(Version, input_data,price):
+    client = replicate.Client()
 
-    # This pattern matches coordinates that are comma-separated
-    #return coordinates
+    prediction = client.predictions.create(
+        version=Version,
+        input=input_data
+    )
+    print("Prediction created with details:", prediction)
+    # Replace 'your_api_key_here' with your actual Replicate API key
+    api_key = 'r8_X7BImFgGCsTYYNYiRsHNlipu0zf3pG12fITxR'
 
-    pattern = r'(\d+),\s*(\d+),\s*(\d+),\s*(\d+)'
-    matches = re.findall(pattern, response_text)
-
-  # Convert the string matches to lists of integers
-    coordinates_list = [list(map(int, match)) for match in matches]
-    
-    return coordinates_list
+    prediction_id = prediction.id
+    print(f"Prediction ID: {prediction_id}\n")
+    print("type: ", type(prediction))
+    # time.sleep(7) 
+    # prediction_result = client.predictions.get(prediction_id)
+    # print(prediction_result)
 
 
+    while True:
+        prediction_result = client.predictions.get(prediction_id)
+        if prediction_result.status == 'succeeded':
+            # Process the successful prediction
+            break
+        elif prediction_result.status == 'failed':
+            # Handle the failure
+            break
+        else:
+            # Wait some time before checking again
+            time.sleep(5)
+
+    # Check the status or result of your prediction
+    if prediction_result.status == 'succeeded':
+        result = prediction_result.metrics
+        print(result, "\n")
+        predic_time = prediction_result.metrics['predict_time']
+        print(f"Predict Time: {predic_time} seconds")
+        
+    elif prediction_result.status == 'failed':
+        error_message = prediction_result.error
+        print(error_message)
+    else:
+        # If it's still running, you might want to check again later
+        print("Prediction is still processing.")
+
+    total_cost = predic_time * price
+    return total_cost,predic_time
 
 
-    
 def calculate_image_tokens(width: int, height: int):
     if width > 2048 or height > 2048:
         aspect_ratio = width / height
@@ -61,27 +138,15 @@ def calculate_cost(width, height):
     cost = num_tokens * cost_per_token
     return cost
 
-
-
-
 def calculate_iou(boxA, boxB):
-    # Calculate the (x, y) coordinates of the intersection rectangle
     xA = max(boxA[0], boxB[0])
     yA = max(boxA[1], boxB[1])
     xB = min(boxA[2], boxB[2])
     yB = min(boxA[3], boxB[3])
 
-    # Compute the area of intersection rectangle
-    interWidth = max(0, xB - xA + 1)
-    interHeight = max(0, yB - yA + 1)
-    interArea = interWidth * interHeight
+    interArea = max(0, xB - xA) * max(0, yB - yA)
+    boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+    boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
 
-    # Compute the area of both the prediction and ground truth rectangles
-    boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
-    boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
-
-    # Compute the intersection over union by taking the intersection area and dividing it by the sum of prediction + ground-truth
-    # areas - the interesection area
     iou = interArea / float(boxAArea + boxBArea - interArea)
     return iou
-
