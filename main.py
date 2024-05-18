@@ -126,7 +126,7 @@ Total_cost, Predic_time = calculate_predi_time("ae0d70cebf6afb2ac4f5e4375eb599c1
 print("Predicted bboxes",pred_bboxes, "\n")
 true_positives = 0
 false_positives = 0
-## Byt iou tröskelvärde mellan 20, 50 och 60%
+## testa olika iou tröskelvärde mellan 20, 50 och 60%
 iou_threshold = 0.50
 matches = []
 # matched_ground_truth = []  # Lista för att hålla reda på vilka GT-boxar som matchats
