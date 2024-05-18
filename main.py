@@ -349,13 +349,6 @@ mydata = [
 head = [f"{image}","LLaVA"]
 print(tabulate(mydata, headers=head, tablefmt="grid"))
 f.write(tabulate(mydata, headers=head, tablefmt="grid"))
-
-
 f.close()
-#kolla upp YOLO, kolla att den ger korrekt beskrivning också inte som LLaVA av
-#0.55 * 2560 = 1408 for x 
-#0.72 * 2048 = ... for y
-#[xmin,ymin,xmax,ymax]
-
 
 
