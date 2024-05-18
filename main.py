@@ -1,58 +1,123 @@
-import time 
 from matplotlib import pyplot as plt
-import numpy
-import supervision as sv
-import cv2 
-import numpy as np
+import openai
+import time
+from openai import OpenAI
+import os 
+import json
+import base64
+import requests
 import psutil
 import nltk
-import json
-import os
+import cv2
 from nltk.tokenize import word_tokenize
-from sklearn.metrics import precision_score, recall_score
+from tabulate import tabulate
+from functions import  drawing_boxes, extract_coordinates_gpt4,calculate_image_tokens, calculate_iou,calculate_cost
+import replicate
 #nltk.download('punkt')  # Ensure the tokenizer is downloaded
 from nltk.translate.meteor_score import meteor_score
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
-from tabulate import tabulate
-from functions import calculate_iou, drawing_boxes, calculate_IOU, calculate_predi_time
-import replicate
-import matplotlib.patches as patches
-from PIL import Image
+# OpenAI API Key
+api_key = "skriv din API nyckeln"
 
+# Function to encode the image
+def encode_image(image_path):
+  with open(image_path, "rb") as image_file:
+    return base64.b64encode(image_file.read()).decode('utf-8')
 
-image = "ordning3.jpg"
 start = time.time()
-f = open('YOLO_data.txt', 'a')
+# Path to your image
+image_path = "ordning3.jpg"
+#image_path = "bord1.jpg"
+#image_path = "ordning4_ny.jpg"
+#image_path = "ordning5.jpg"
+input_image = open(f"{image_path}", "rb")
 
-input_image = open(f"{image}", "rb")
-input_data={
-    "nms": 0.05,
-    "conf": 0.37,
-    "tsize": 640,
-    "model_name": "yolox-x",
-    "input_image": input_image,
-    "return_json": True
+# Query
+#query = "Describe the coordinates of the utensils inside the dish rack. Describe the coordinates x0,y0,x1,y1 of the pot lid, the blue bowl, the scissors, the dish rack, the shelf above the sink, the spatula and of the cheese slicer."
+#ordning3
+query = "Calculate the coordinates in pixels in the format x0,y0,x1,y1 of the white plate, the white bowl, the glass, the fork, the spoon, the knife, the dish rack, the shelf above the dish rack, the white coffe mugg in the shelf and the blue coffe mugg in the shelf. Present the result like this: x0,y0,x1,y1 new line next coordinate new line and so on."
+
+#ordning4_ny
+#query = "Calculate the coordinates in pixels in the format x0,y0,x1,y1 of the pot lid, the blue bowl, the scissors, the dish rack, the shelf above the sink, the spatula and of the cheese slicer. Present the result like this: x0,y0,x1,y1 new line next coordinate new line and so on."
+
+#ordning5
+#query = "Calculate the coordinates in pixels in the format x0,y0,x1,y1 of the blue bowl, the scissors, the dish rack, the shelf above the sink, the spoon, the fork, spaghetti scoop, the grater. Present the result like this: x0,y0,x1,y1 new line next coordinate new line and so on."
+
+#query = "Calculate the coordinates in pixels in the format x0,y0,x1,y1 of the spoon, the yellow paper, the pen, the pencil, the eraser and the glasses. Present the result like this: x0,y0,x1,y1 new line next coordinate new line and so on."
+
+# Getting the base64 string
+base64_image = encode_image(image_path)
+
+headers = {
+  "Content-Type": "application/json",
+  "Authorization": f"Bearer {api_key}"
 }
-output = replicate.run(
-    "daanelson/yolox:ae0d70cebf6afb2ac4f5e4375eb599c178238b312c8325a9a114827ba869e3e9",
-    input=input_data
-)
-print(output)
+payload = {
+  "model": "gpt-4-turbo",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": query
+        },
+        {
+          "type": "image_url",
+          "image_url": {
+            "url": f"data:image/jpeg;base64,{base64_image}"
+          }
+        }
+      ]
+    }
+  ],
+  "max_tokens": 300
+}
 
+# imagen ordning 3
+reference = "The image shows a kitchen scen where there is a dish drainer. Inside the dish drainer there are a white plate, a glass, a white bowl, two forks a spoon and a knife.\
+              \nOn top of the dish drainer there is a white shelf with a white coffe mug and a blue coffe mug. The wall of the kitchen is made of white majolica."  # Correct answer
+
+#imagen ordning4
+#reference = "The image shows a kitchen scen where there is a dish rack. In the white dish rack there is a blue bowl, a silver pot lid, white scissors, a spatula and a cheese slicer. On top of the dish rack there is an empty white shelf"
+# Reference ordning5:
+#reference = "The image shows a kitchen scen where there is a dish rack. In the white dish rack there is the blue bowl, the scissors, the dish rack, the shelf above the sink, the spoon, the fork, spaghetti scoop, the grater"
+
+#reference = "In the white table we have a spoon, the yellow paper, the pen, the pencil, the eraser and the glasses"
+
+
+f = open('GPT4_data.txt', 'a')
+
+response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+print(response.json())
 end = time.time()
+temp_json = response.json()
+#in candidate stores the text generated by the model
+candidate = temp_json['choices'][0]['message']['content']
+print("\nOutput message: ",candidate)
 
-# Remove the extra quotes and parse the JSON string
-json_str = output['json_str'].strip('"')
-detections = json.loads(json_str.replace('\'', '"'))  # Replace single quotes with double quotes to form valid JSON
+########================= getting the coordinates from the text ===================###########
+pred_coordinates = extract_coordinates_gpt4(candidate)
 
-###=========== draw the ground truth =====================##############
-image_path = image
-image = cv2.imread(image_path)
+# Print or use the extracted coordinates
+print("\n")
+for coord in pred_coordinates:
+    print(coord)
+print("\n")
+
+
+# names = extract_names(candidate)
+# print("list of names: ", names, "\n")
+#############=================== end of getting the coordinates from the text ==========#####
+
+####================ DRAWING THE GROUND TRUTH BOUNDING BOXES ==========############
+
+img = cv2.imread(image_path)
 numOfTimes = 10
-title = "objects"
+labels = "objects"
 coordinates = []
 for _ in range(numOfTimes):
-    x_val, y_val, w_val, h_val = drawing_boxes(title,image)
+    x_val, y_val, w_val, h_val = drawing_boxes(labels,img)
     coordinates.append([x_val,y_val, (x_val + w_val), (y_val+h_val)])
     #print("Num of iter: ", x)
 
@@ -68,81 +133,84 @@ for x in range(sz):
     # Add each element of list_float to itself and append to merged_result
     # for num in list_float:
     #     merged_result.append(num + num)
-
     result_gt.extend(coordinates[x])
-    #result_gt.append(coordinates[x])
-
     # Append the merged_result to mrgd_list_float
     # mrgd_lis_float.append(merged_result)
 
 print("\nresult ground truth bounding box",result_gt)
-
-
-#selectROI USED TO DRAW THE BOUNDING BOX WITH THE HELP OF CV2 AND OBTAIN THE COORDINATES 
-#x,y,w,h = cv2.selectROI("cat", img, fromCenter=False, showCrosshair=True)
-
+print("\nCoordinates: ", coordinates)
 for coord in coordinates:
-    temp = cv2.rectangle(image, (coord[0], coord[1]), (coord[2], coord[3]), (0, 255, 0), 2)
+    temp = cv2.rectangle(img, (coord[0], coord[1]), (coord[2], coord[3]), (0, 255, 0), 2)
 
-cv2.imshow('Detections', image)
-cv2.imwrite("yolotest3_bboxes.jpg", image)
+cv2.imshow("Ground truth bounding boxes", temp)
+cv2.imwrite('gt_image.jpg',temp)      
+cv2.waitKey(0)
+#print(f"{x= }	{y= }	{w= }	{h= }")
+#cv2.waitKey(0)
+
+#rectangle DRAW THE BOUNDING BOXES BASED ON THE COORDINATES 
+# img_with_gruthrubbox = cv2.rectangle(img, (x,y),(x + w,y + h), (0,255,0),2)
+# cv2.imshow("with the box", img_with_gruthrubbox)
+# cv2.waitKey(0)
+cv2.destroyAllWindows()
+
+####================ END DRAWING THE GROUND TRUTH BOUNDING BOXES ==========############
+
+
+
+####================ DRAWING THE PREDICTED BOUNDING BOXES ==========############
+
+# Load the image you want to draw on
+img = cv2.imread('gt_image.jpg')  # Replace 'your_image.jpg' with your actual image file
+# if img.shape[1] != 606 or img.shape[0] != 640:
+#     img = cv2.resize(img, (606, 640))
+
+# Iterate over the bounding box coordinates and draw each rectangle
+pr = []
+for bbox in pred_coordinates:
+    pr.extend([bbox[0], bbox[1], bbox[2], bbox[3]])
+    # Draw rectangle on the image
+    cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2)
+
+# Display the image with rectangles
+cv2.imshow('Image with Bounding Boxes', img)
+cv2.imwrite('GPT4_ordning3_ny3_3.jpg',img) 
+print("List of the predicted bboxes: ",pr)     
 cv2.waitKey(0)
 cv2.destroyAllWindows()
-###=========== end draw the ground truth =====================##############
 
+###=================== END OF DRAWING THE PREDICTED BBOXES ===========0#####
 
-###=========== drawing the predic ground truth =====================##############
-image = cv2.imread("yolotest3_bboxes.jpg")
-pred_bboxes = []
-if image is not None:
-    # Loop through the detections and draw each bounding box
-    for det_key, det in detections.items():
-        x0 = int(det['x0'])
-        y0 = int(det['y0'])
-        x1 = int(det['x1'])
-        y1 = int(det['y1'])
-        cv2.rectangle(image, (x0, y0), (x1, y1), (0, 0, 255), 2)
-        label = f"{det['cls']}: {det['score']:.2f}"
-        #cv2.putText(image, (x0, y0 - 10), label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-        
-        cv2.putText(image, f'{label}', (x0, y0  - 10),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-        pred_bboxes.append([x0, y0, x1, y1])
-
-   # Display the result
-    cv2.imshow('Detections', image)
-    cv2.imwrite("yolotest3_ordning3_2.jpg", image)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-else:
-    print("Error: Image could not be loaded.")
-###=========== drawing the predic ground truth =====================##############
-####============== CALCULATING THE PREDICTION TIME  =========####
-Total_cost, Predic_time = calculate_predi_time("ae0d70cebf6afb2ac4f5e4375eb599c178238b312c8325a9a114827ba869e3e9",input_data,0.000225) 
-####============== END OF CALCULATING THE PREDICTION TIME  =========####
+###=================== CALUCLATING THE IOU ===========0#####
+# iou_results = help_iou_more_coordinates(result_gt,pr)
+# print(f"iou: {iou_results}\n")
+###=================== END CALUCLATING THE IOU ===========0#####
 
 ###============= CALCULATING THE PRECISION, RECALL, TP, FP, FN =====####
-#pr_boxes = [pred_bboxes[i:i+4] for i in range(0, len(pred_bboxes), 4)]
-print("Predicted bboxes",pred_bboxes, "\n")
+pr_boxes = [pr[i:i+4] for i in range(0, len(pr), 4)]
+print("Predicted bboxes",pr_boxes, "\n")
 true_positives = 0
 false_positives = 0
-## testa olika iou tröskelvärde mellan 20, 50 och 60%
-iou_threshold = 0.50
+iou_threshold = 0.60
 matches = []
 # matched_ground_truth = []  # Lista för att hålla reda på vilka GT-boxar som matchats
 gt_matched = set()  # För att hålla reda på vilka GT-boxar som matchats
-p_bboxes = []
+
 # Calculate True Positives and False Positives
-for p_idx, p_box in enumerate(pred_bboxes):
+for p_idx, p_box in enumerate(pr_boxes):
     match_found = False
     for gt_idx, gt_box in enumerate(coordinates):
         iou = calculate_iou(p_box, gt_box)
         if iou >= iou_threshold:
-            true_positives += 1
-            gt_matched.add(gt_idx)
-            match_found = True
-            p_bboxes.append(p_box)
-            break
+            if gt_idx not in gt_matched:
+                true_positives += 1
+                gt_matched.add(gt_idx)
+                match_found = True
+
+                # Draw bounding box on the image if IoU is greater than 0.80
+                cv2.rectangle(img, (p_box[0], p_box[1]), (p_box[2], p_box[3]), (255, 0, 0), 2)                
+                break
+
     if not match_found:
         false_positives += 1
 
@@ -150,23 +218,21 @@ for p_idx, p_box in enumerate(pred_bboxes):
 false_negatives = len(coordinates) - len(gt_matched)
 precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
 recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
-print("p_bboxes: ", p_bboxes, "\n")
-for coord1 in p_bboxes:
-    cv2.rectangle(image, (coord1[0], coord1[1]), (coord1[2], coord1[3]), (255, 0,0), 2)
 
 print(f"True Positives (TP): {true_positives}")
 print(f"False Positives (FP): {false_positives}")
 print(f"False Negatives (FN): {false_negatives}")
 print(f"Precision: {precision:.3f}")
 print(f"Recall: {recall:.3f}")
-cv2.imshow("bounding boxes", image)
-cv2.imwrite('YOLO2.jpg',image)      
+print(f"Matched ground truth: {gt_matched}")
+cv2.imshow('Image with Bounding Boxes', img)
+cv2.imwrite('GPT43.jpg',img) 
+print("List of the predicted bboxes: ",pr)     
 cv2.waitKey(0)
 cv2.destroyAllWindows()
-print(f"Matched ground truth: {gt_matched}")
 ###============= END CALCULATING THE PRECISION, RECALL, TP, FP, FN =====####
 
-####========= DRAWING THE STOLP DIAGRAM ===========####
+####========= DRAWING THE DIAGRAM ===========####
 metrics = ['True Positives', 'False Positives', 'False Negatives', 'Precision', 'Recall']
 values = [true_positives, false_positives, false_negatives, precision, recall]
 
@@ -184,30 +250,102 @@ for i, v in enumerate(values):
 # Show the plot
 plt.tight_layout()
 plt.show()
-####========= END OF DRAWING THE STOLP DIAGRAM ===========####
+####========= DRAWING THE DIAGRAM ===========####
+
+###============= CALCULATING THE AMOUNT OF THE TOKEN COST =====####
+image_height, image_width = img.shape[0], img.shape[1]
+print(calculate_image_tokens(image_width,image_height) , "Tokens")
+tokens_img = calculate_image_tokens(image_width,image_height)
+cost = calculate_cost(image_width,image_height)
+###============= END OF CALCULATING THE AMOUNT OF THE TOKEN COST =====####
+
+
+
+
+####========================Extractiong of the objects============###
+with open('items.json', 'r') as file:
+    data = json.load(file)
+    item_list = data['items']
+
+# Normalize the description to lower case to ensure case-insensitive matching
+description_lower = candidate.lower()
+
+# Find which items from the JSON list are mentioned in the description
+found_items = [item for item in item_list if item in description_lower]
+
+# Clean items to ensure proper formatting for API query
+found_items_cleaned = [item.strip() for item in found_items]  # Remove extra spaces
+found_items_query = ','.join(found_items_cleaned)
+print("\nFound Items:", found_items_query)
+print("Number of Items Found:", len(found_items))
+print("Total Number of Items:", len(item_list))
+#print("Found {} out of {} items.".format(len(found_items)))
+#####======================ENd extraction of the objects=============###
+
+#####=============DINO================#####
+# output = replicate.run(
+#     "adirik/grounding-dino:efd10a8ddc57ea28773327e881ce95e20cc1d734c589f7dd01d2036921ed78aa",    
+#     input={
+#         "image": input_image,
+#         "query": found_items_query,
+#         "box_threshold": 0.41,
+#         "text_threshold": 0.26,
+#         "show_visualisation": True,   
+#     }
+# )
+
+#resultatet blir en JSON format med en länk som visar input bilden med resultatet
+# print("\n",output)
+###===============END OF DINO============####
+time_exec = end - start
+print("time of execution: ", time_exec )
+
+########================ CALCULATING THE METEOR AND BLEU
+# # Tokenize the reference and candidate
+# tokenized_reference = word_tokenize(reference)
+# tokenized_candidate = word_tokenize(candidate)
+
+# # Calculate METEOR score
+# score1 = meteor_score([tokenized_reference], tokenized_candidate)
+# print(f"METEOR Score: {score1:.3f}\n")
+
+# # Create a SmoothingFunction object
+# chencherry = SmoothingFunction()
+
+# # Now, let's calculate the BLEU score with smoothing
+# bleu_score = sentence_bleu([reference], candidate, 
+#                            smoothing_function=chencherry.method1)  # reference tokens must be a list of lists
+
+# print(f"BLEU Score: {bleu_score}\n")
+
+f.write(f"\nimage: {image_path}, below are the measures for this image using the model LLaVA\n")
+f.write("\nQuery: " + query + "\n")
+f.write("\nReference text provided by the user:\n" + reference +"\n")
+f.write("Candidate text provided by the modell:\n" + candidate + "\n")
+f.write("Execution time: " + repr(time_exec)+ "second\n")
+#f.write("METEOR Score: "+ repr(score1)+ "\n")
+#f.write("BLEU score: "+repr(bleu_score))
 
 mydata = [
-    ["Execution time of DINO", f"{end - start} second"], 
-    # ["Execution time of DINO", f"{time_exec_dino} second"],
-    # ["METEOR Score", f"{score1}"],
-    # ["BLEU score", f"{bleu_score}"],
-    #["IOU", f"{iou_results}\n"],
-    #["Num of found items", f"{len(labels)}, {labels}"],
-    ["Predict time usage of Nvidia T4 GPU hardware (YOLOV8x)", f"{Predic_time} seconds"],
-    ["Cost of the usage Nvidia T4 GPU hardware (YOLOV8x)", f"{Predic_time} * 0.000225/s = {Total_cost} dollar"],
-    ["Precision", f"{precision}"],
-    ["Recall", f"{recall}"],
-    ["DINO predicted coordinates of objects: ", f"{coordinates}"],
+    ["Execution time", f"{time_exec}"], 
+#    ["METEOR Score", f"{score1}"],
+#    ["BLEU score", f"{bleu_score}"],
+    ["Predicted coordinates from GPT4", f"{coordinates}"],
+    #["IOU", f"{iou_results}"],
+    ["Cost of token image", f"{tokens_img}"],
+    ["Num of found items", f"{len(coordinates)}"],
     ["Precision", f"{precision}"],
     ["Recall", f"{recall}"],
     ["True positive", f"{true_positives}"],
     ["False positive", f"{false_positives}"],
     ["False negative", f"{false_negatives}"],
     ["Matched ground truth:", f"{gt_matched}"],
-    ["iou threshold:", f"{iou_threshold}"]
+    ["iou threshold: ", f"{iou_threshold}"],
+    ["cost of the picture: ", f"{cost}"]
+
 ]
  
 # create header
-head = [f"{image_path}","YOLOv8x"]
+head = [f"{image_path}","GPT4 Turbo Vision"]
 print(tabulate(mydata, headers=head, tablefmt="grid"))
 f.write(tabulate(mydata, headers=head, tablefmt="grid"))
