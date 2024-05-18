@@ -17,7 +17,7 @@ import replicate
 from nltk.translate.meteor_score import meteor_score
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 # OpenAI API Key
-api_key = "write your key" 
+api_key = "skriv din API nyckeln för att utföra förfrågningar" 
 
 # Function to encode the image
 def encode_image(image_path):
