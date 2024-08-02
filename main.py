@@ -57,7 +57,7 @@ res = "".join(output)
 print(res)
 ####====================== End of Model LLaVA =====================######
 
-###=====================Extracting the objects Version 2============###
+###=====================Extracting the objects Version 2 in JSON format ============###
 new_res = res.replace('json', '').replace("```", "")
 print(f"\n {new_res}")
 with open("sample1.json", "w") as file:
@@ -72,7 +72,7 @@ names = ', '.join(item['name'] for item in json_object['labels'])
 print(f"\n names: {names}")
 
 # f.write("\n" + repr(json_object) + "\n")
-###==================== End of extracting the objects Version 2 ======###
+###==================== End of extracting the objects Version 2 in JSON format ======###
 
 ###########============= DRAWING THE GROUND TRUHT BOUNDING BOXES ================############
 # img = cv2.imread(image)
